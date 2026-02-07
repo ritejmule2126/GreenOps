@@ -1,0 +1,37 @@
+name: GreenOps PHP CI/CD
+
+on:
+  push:
+    branches:
+      - main  # triggers on pushes to main branch
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout code
+      - uses: actions/checkout@v3
+
+      # 2️⃣ Set up PHP
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.1
+
+      # 3️⃣ Install dependencies (optional)
+      - name: Install Composer dependencies
+        run: |
+          composer install || echo "No composer dependencies"
+
+      # 4️⃣ Run basic PHP syntax check
+      - name: Check PHP syntax
+        run: |
+          find . -name "*.php" -exec php -l {} \;
+
+      # 5️⃣ Test PHP server (optional)
+      - name: Test PHP Server
+        run: |
+          php -S localhost:8083 -t . &
+          sleep 5
+          curl -s http://localhost:8083 > /dev/null
