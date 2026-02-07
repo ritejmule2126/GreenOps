@@ -1,0 +1,14 @@
+<?php
+$conn = mysqli_connect(
+    "127.17.0.1",
+    "root",
+    "",
+    "barbershop_management",
+    3306
+);
+
+if (!$conn) {
+    die("Connection failed: " . mysqli_connect_error());
+}
+?>
+
