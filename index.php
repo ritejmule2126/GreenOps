@@ -1,5 +1,4 @@
 <?php
-//test change to check CI / CD
 session_start();
 include 'db_connect.php';
 
