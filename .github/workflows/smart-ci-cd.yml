@@ -1,0 +1,60 @@
+name: GreenOps Smart CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  smart-ci-cd:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1️⃣ Checkout code
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    # 2️⃣ Setup PHP for linting/tests
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: 8.1
+
+    # 3️⃣ Detect changed files
+    - name: Detect changed files
+      id: changes
+      run: |
+        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+        echo "All changed files: $CHANGED_FILES"
+        
+        # Filter deployable files (PHP, HTML, JS, CSS, images)
+        DEPLOY_FILES=$(echo "$CHANGED_FILES" | grep -E '\.php$|\.html$|\.js$|\.css$|\.png$|\.jpg$|\.svg$')
+        echo "Deployable files: $DEPLOY_FILES"
+
+        if [ -z "$DEPLOY_FILES" ]; then
+          echo "no_deploy=true" >> $GITHUB_OUTPUT
+        else
+          echo "no_deploy=false" >> $GITHUB_OUTPUT
+
+    # 4️⃣ Smart CI: Lint only changed PHP files
+    - name: PHP lint on changed files
+      if: steps.changes.outputs.no_deploy == 'false'
+      run: |
+        for f in $(git diff --name-only HEAD~1 HEAD | grep '\.php$'); do
+          echo "Linting $f"
+          php -l $f
+        done
+
+    # 5️⃣ Smart CD: Deploy only if meaningful files changed
+    - name: Deploy changes
+      if: steps.changes.outputs.no_deploy == 'false'
+      run: |
+        echo "Meaningful changes detected. Deploying..."
+        # Example: Copy files to server (replace with your server details)
+        # rsync -avz --exclude='.git' ./ user@yourserver:/var/www/html/barbershop_management
+        echo "Deployment step goes here"
+
+    # 6️⃣ Skip deploy if no meaningful changes
+    - name: Skip deploy
+      if: steps.changes.outputs.no_deploy == 'true'
+      run: echo "No meaningful changes detected. Deployment skipped."
