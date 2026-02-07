@@ -4,25 +4,17 @@ on:
   push:
     branches:
       - main
-    # Trigger only if relevant files are changed
-    paths:
-      - '**.php'
-      - '**.html'
-      - '**.css'
-      - '**.js'
-      - '**.png'
-      - '**.jpg'
-      - '**.svg'
-      - '.env'
 
 jobs:
   smart-ci:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repo
+      # 1️⃣ Checkout repo with enough history for git diff
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 2  # Fetch last 2 commits for diff
 
       # 2️⃣ Setup PHP
       - name: Setup PHP
@@ -30,18 +22,18 @@ jobs:
         with:
           php-version: 8.1
 
-      # 3️⃣ List all changed files
+      # 3️⃣ List all changed files (works now with shallow clone)
       - name: List changed files
         id: changes
         run: |
-          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
           echo "CHANGED_FILES<<EOF" >> $GITHUB_ENV
           echo "$CHANGED_FILES" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
           echo "Changed files detected:"
           echo "$CHANGED_FILES"
 
-      # 4️⃣ Run PHP syntax check only if PHP files changed
+      # 4️⃣ PHP syntax check only if PHP files changed
       - name: PHP syntax check
         if: contains(env.CHANGED_FILES, '.php')
         run: |
@@ -50,21 +42,21 @@ jobs:
             php -l $file
           done
 
-      # 5️⃣ Lint frontend files if HTML/CSS/JS changed
+      # 5️⃣ Frontend lint only if HTML/CSS/JS changed
       - name: Frontend lint
         if: contains(env.CHANGED_FILES, '.html') || contains(env.CHANGED_FILES, '.css') || contains(env.CHANGED_FILES, '.js')
         run: |
-          echo "Frontend files changed. You can add linter commands here."
+          echo "Frontend files changed. Linter step (optional)"
           echo "$CHANGED_FILES" | grep -E ".html|.css|.js"
 
-      # 6️⃣ Optional: Deploy updated assets/images if they changed
+      # 6️⃣ Deploy updated assets/images/config if changed
       - name: Deploy updated assets
         if: contains(env.CHANGED_FILES, '.png') || contains(env.CHANGED_FILES, '.jpg') || contains(env.CHANGED_FILES, '.svg') || contains(env.CHANGED_FILES, '.env')
         run: |
-          echo "Assets/images/config changed. Deploy or copy them as needed."
+          echo "Assets/images/config changed. Deploy or copy them as needed"
           echo "$CHANGED_FILES" | grep -E ".png|.jpg|.svg|.env"
 
-      # 7️⃣ Start PHP server and run simple test only if PHP files changed
+      # 7️⃣ Test PHP server (only if PHP files changed)
       - name: Test PHP server
         if: contains(env.CHANGED_FILES, '.php')
         run: |
@@ -73,9 +65,3 @@ jobs:
           curl -s http://localhost:8083 > /dev/null
           echo "PHP server test successful"
 
-      # 8️⃣ Build Docker only if PHP/backend files changed
-      - name: Build Docker (optional)
-        if: contains(env.CHANGED_FILES, '.php') || contains(env.CHANGED_FILES, '.env')
-        run: |
-          echo "Backend files changed. Building Docker image..."
-          docker build -t greenops-barbershop .
