@@ -1,60 +1,71 @@
-name: GreenOps Smart CI/CD
+name: Smart CI/CD
 
 on:
   push:
     branches:
-      - main
+      - main  # Trigger only on main branch
 
 jobs:
-  smart-ci-cd:
+  smart-deploy:
     runs-on: ubuntu-latest
 
     steps:
-    # 1️⃣ Checkout code
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      # 1️⃣ Checkout the repo
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-    # 2️⃣ Setup PHP for linting/tests
-    - name: Setup PHP
-      uses: shivammathur/setup-php@v2
-      with:
-        php-version: 8.1
+      # 2️⃣ Set up PHP
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: mysqli
 
-    # 3️⃣ Detect changed files
-    - name: Detect changed files
-      id: changes
-      run: |
-        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-        echo "All changed files: $CHANGED_FILES"
-        
-        # Filter deployable files (PHP, HTML, JS, CSS, images)
-        DEPLOY_FILES=$(echo "$CHANGED_FILES" | grep -E '\.php$|\.html$|\.js$|\.css$|\.png$|\.jpg$|\.svg$')
-        echo "Deployable files: $DEPLOY_FILES"
+# 3️⃣ Detect changed files
+- name: Detect changed files
+  id: changes
+  run: |
+    # Fetch full history to compare commits
+    git fetch --unshallow || echo "Already full clone"
 
-        if [ -z "$DEPLOY_FILES" ]; then
-          echo "no_deploy=true" >> $GITHUB_OUTPUT
-        else
-          echo "no_deploy=false" >> $GITHUB_OUTPUT
+    # Check if previous commit exists, else deploy all files
+    if git rev-parse HEAD~1 >/dev/null 2>&1; then
+      CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+    else
+      CHANGED_FILES=$(git ls-files)
+    fi
 
-    # 4️⃣ Smart CI: Lint only changed PHP files
-    - name: PHP lint on changed files
-      if: steps.changes.outputs.no_deploy == 'false'
-      run: |
-        for f in $(git diff --name-only HEAD~1 HEAD | grep '\.php$'); do
-          echo "Linting $f"
-          php -l $f
-        done
+    echo "All changed files: $CHANGED_FILES"
 
-    # 5️⃣ Smart CD: Deploy only if meaningful files changed
-    - name: Deploy changes
-      if: steps.changes.outputs.no_deploy == 'false'
-      run: |
-        echo "Meaningful changes detected. Deploying..."
-        # Example: Copy files to server (replace with your server details)
-        # rsync -avz --exclude='.git' ./ user@yourserver:/var/www/html/barbershop_management
-        echo "Deployment step goes here"
+    # Filter deployable files (PHP, HTML, JS, CSS, images)
+    DEPLOY_FILES=$(echo "$CHANGED_FILES" | grep -E '\.php$|\.html$|\.js$|\.css$|\.png$|\.jpg$|\.svg$' || true)
+    echo "Deployable files: $DEPLOY_FILES"
 
-    # 6️⃣ Skip deploy if no meaningful changes
-    - name: Skip deploy
-      if: steps.changes.outputs.no_deploy == 'true'
-      run: echo "No meaningful changes detected. Deployment skipped."
+    if [ -z "$DEPLOY_FILES" ]; then
+      echo "no_deploy=true" >> $GITHUB_OUTPUT
+    else
+      echo "no_deploy=false" >> $GITHUB_OUTPUT
+
+
+      # 4️⃣ Skip deployment if no real code changes
+      - name: Skip if Only Comments or Docs
+        if: env.CHANGED_FILES == ''
+        run: |
+          echo "No code changes detected. Skipping deployment."
+          exit 0
+
+      # 5️⃣ Deploy to EC2
+      - name: Deploy to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_KEY: ${{ secrets.EC2_KEY }}
+        run: |
+          echo "$EC2_KEY" > ec2_key.pem
+          chmod 400 ec2_key.pem
+          ssh -o StrictHostKeyChecking=no -i ec2_key.pem $EC2_USER@$EC2_HOST << 'EOF'
+            cd /var/www/html/barbershop_management
+            git pull origin main
+            sudo systemctl restart apache2
+          EOF
+          rm -f ec2_key.pem
